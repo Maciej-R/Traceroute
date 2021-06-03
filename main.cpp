@@ -36,13 +36,13 @@ unsigned short checksum(void* b, int len)
 }
 
 // make a ping request
-void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int payload_len=20, char random_payload=1, char ttl_max=64, char n_tries=3){
+void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int payload_len=0, char random_payload=1, char ttl_max=64, char n_tries=3){
 
 	struct sockaddr received;
 	long double rtt_msec = 0, total_msec = 0;
 	struct timespec start, end;
 	bzero(&end, sizeof(end));
-	unsigned long ping_delay = 3 * 1000000000; // Time between consecutive packets sent in nanoseconds
+	unsigned long ping_delay = 3ul * 1000000000; // Time between consecutive packets sent in nanoseconds
 	char reached = 0;
 	int n_received = 0; 
 	struct timeval tv_out; // Receive time out for socket
@@ -52,7 +52,7 @@ void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int pay
 	size_t hdr_sz = sizeof(struct icmphdr);
 	char* icmp_pkt = (char*) malloc(hdr_sz + payload_len);
 	char* rcv_icmp_pkt = (char*)malloc(hdr_sz + payload_len);
-	char* icmp_payload = icmp_payload + hdr_sz;
+	char* icmp_payload = icmp_pkt + hdr_sz;
 	if (random_payload) {
 		bzero(icmp_pkt, hdr_sz);
 		// Fill payload with random payload
@@ -64,12 +64,20 @@ void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int pay
 	}
 	else bzero(icmp_pkt, hdr_sz + payload_len);
 
-	struct icmphdr* icmp = (icmphdr*) icmp_pkt;
-	icmp -> type = ICMP_ECHO;
+	struct icmphdr* icmp = (icmphdr*) &icmp_pkt;
+	icmp->type = ICMP_ECHO;
+	icmp->code = 0;
+	// struct icmphdr icmp;
+	// icmp.type = 8;
+	// icmp.code = 0;
 
+	//char* c = (char*) &icmp_pkt;		
+	//*c = 8;
+	
 	uint16_t seq_start;
 	seq_start = ~(seq_start & 0); // Mask with all bits set to 1
 	seq_start = (uint16_t)(rand() % seq_start);
+	seq_start = 1;
 
 	// Receive timeout
 	setsockopt(ping_sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_out, sizeof tv_out);
@@ -88,7 +96,8 @@ void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int pay
 			uint16_t id = (uint16_t)(rand() % (2 << 15));
 			icmp->un.echo.id = id;
 			icmp->un.echo.sequence = seq_start + i + ttl;
-			icmp->checksum = checksum(&icmp_pkt, sizeof(icmp_pkt));
+			bzero(&(icmp->checksum), 2);
+			icmp->checksum = checksum(&icmp_pkt, sizeof(icmp_pkt)); 
 			
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			unsigned long diff = (start.tv_sec - end.tv_sec) * 1000000000 + start.tv_nsec - end.tv_nsec;
@@ -96,8 +105,8 @@ void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int pay
 				usleep(ping_delay - diff);
 				clock_gettime(CLOCK_MONOTONIC, &start);
 			}
-						
-			if (sendto(ping_sockfd, &icmp_pkt, sizeof(icmp_pkt), 0,	(struct sockaddr*) target, sizeof(*target)) < 0){
+
+			if (sendto(ping_sockfd, &icmp_pkt, sizeof(icmp_pkt), 0,	target, sizeof(*target)) < 0){
 				printf("Packet couldn't have been sent\n");
 				continue;
 			}
@@ -112,6 +121,9 @@ void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int pay
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			if (r_code > 0){
 
+				iphdr* received_ip_hdr = (iphdr*) &rcv_icmp_pkt;
+				icmphdr* received_header = (icmphdr*) (&rcv_icmp_pkt + sizeof(iphdr));
+				if (received_header->type == 0 && received_header->code == 0) printf("PING - response");
 				unsigned long duration = (start.tv_sec - end.tv_sec) * 1000000000 + start.tv_nsec - end.tv_nsec;
 				duration /= 1000000; // To msec
 
@@ -148,8 +160,8 @@ int main(int argc, char* argv[]){
 	struct sockaddr addr;
 	int addrlen = sizeof(addr);
 	char net_buf[NI_MAXHOST];
-
-	if (argc != 2)
+	
+	/**if (argc != 2)
 	{
 		printf("Format %s <address>\n", argv[0]);
 		return 0;
@@ -165,17 +177,32 @@ int main(int argc, char* argv[]){
 		struct addrinfo* ainfo;
 		getaddrinfo(argv[1], 0, 0, &ainfo);
 		addr = *(ainfo->ai_addr);
-	}
+	}**/
 
-	printf("socket()\n");
-	if ((fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0){
+	bzero(&addr.sa_data, sizeof(addr.sa_data));
+	
+	addr.sa_family = AF_INET;
+
+	struct sockaddr_in a;
+	bzero(&a, sizeof(a));
+	a.sin_family = AF_INET;
+	a.sin_port = 0;
+	inet_pton(AF_INET, "8.8.8.8", &a.sin_addr);
+
+	//printf("socket()\n");
+	fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP); 
+	printf("%d\n", fd);
+	if (fd < 0){
 		printf("socket() error\n");
-		printf("%s\n", strerror(errno));
+		fflush(stdout);
+		char* b;
+		b = strerror(errno);
+		printf("%s\n", b) ;
 		return 0;
 	}
 
 	printf("Strting process");
-	send_ping(fd, &addr);
+	send_ping(fd, (struct sockaddr*) &a);
 
 	char* tmp = (char*)malloc(20);
 	fgets(tmp, 10, stdin);
