@@ -38,11 +38,11 @@ unsigned short checksum(void* b, int len)
 // make a ping request
 void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int payload_len=0, char random_payload=1, char ttl_max=64, char n_tries=3){
 
-	struct sockaddr received;
+	struct sockaddr_in received;
 	long double rtt_msec = 0, total_msec = 0;
 	struct timespec start, end;
 	bzero(&end, sizeof(end));
-	unsigned long ping_delay = 3ul * 1000000000; // Time between consecutive packets sent in nanoseconds
+	unsigned long ping_delay = 1ul * 1000000000; // Time between consecutive packets sent in nanoseconds
 	char reached = 0;
 	int n_received = 0; 
 	struct timeval tv_out; // Receive time out for socket
@@ -51,7 +51,8 @@ void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int pay
 
 	size_t hdr_sz = sizeof(struct icmphdr);
 	char* icmp_pkt = (char*) malloc(hdr_sz + payload_len);
-	char* rcv_icmp_pkt = (char*)malloc(hdr_sz + payload_len);
+	int rcv_icmp_pkt_sz = hdr_sz + payload_len + sizeof(iphdr);
+	char* rcv_icmp_pkt = (char*) malloc(rcv_icmp_pkt_sz);
 	char* icmp_payload = icmp_pkt + hdr_sz;
 	if (random_payload) {
 		bzero(icmp_pkt, hdr_sz);
@@ -102,7 +103,7 @@ void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int pay
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			unsigned long diff = (start.tv_sec - end.tv_sec) * 1000000000 + start.tv_nsec - end.tv_nsec;
 			if (diff < ping_delay) {
-				usleep(ping_delay - diff);
+				usleep((ping_delay - diff)/1000);
 				clock_gettime(CLOCK_MONOTONIC, &start);
 			}
 
@@ -112,32 +113,46 @@ void send_ping(int ping_sockfd, struct sockaddr* target, time_t t_out=3, int pay
 			}
 
 			socklen_t len = sizeof(received);
-			int r_code = recvfrom(ping_sockfd, &rcv_icmp_pkt, sizeof(rcv_icmp_pkt), 0, (struct sockaddr*) &received, &len);
-			if (r_code < 0){
-				if (errno == EAGAIN || errno == EWOULDBLOCK) printf("Timeout \n");
-				else printf("Packet receive failed!\n");
-				continue;
-			}
-			clock_gettime(CLOCK_MONOTONIC, &end);
-			if (r_code > 0){
+			char response_received = 0;
+			while (!response_received){
+				int r_code = recvfrom(ping_sockfd, rcv_icmp_pkt, rcv_icmp_pkt_sz, 0, (struct sockaddr*) &received, &len);
+				if (r_code < 0){
+					if (errno == EAGAIN || errno == EWOULDBLOCK) printf("*\t");
+					else printf("Packet receive failed! %d - %s\n", errno, strerror(errno));
+					break;
+				}
+				clock_gettime(CLOCK_MONOTONIC, &end);
+				if (r_code > 0){
 
-				iphdr* received_ip_hdr = (iphdr*) &rcv_icmp_pkt;
-				icmphdr* received_header = (icmphdr*) (&rcv_icmp_pkt + sizeof(iphdr));
-				if (received_header->type == 0 && received_header->code == 0) printf("PING - response");
-				unsigned long duration = (start.tv_sec - end.tv_sec) * 1000000000 + start.tv_nsec - end.tv_nsec;
-				duration /= 1000000; // To msec
+					iphdr* received_ip_hdr = (iphdr*) rcv_icmp_pkt;
+					if (received_ip_hdr->protocol == IPPROTO_ICMP){
 
-				char* buf = (char*) malloc(200);
-				inet_ntop(received.sa_family, &received.sa_data, buf, sizeof(*buf));
-				printf("%d ms %s", duration, buf);
-				free(buf);
+						icmphdr* received_header = (icmphdr*) (rcv_icmp_pkt + sizeof(iphdr));
+						sockaddr_in* dst = (sockaddr_in*) &target;
+						if (received_header->type == ICMP_TIME_EXCEEDED || (received_header->type == ICMP_ECHOREPLY && memcmp(&received.sin_addr, &(dst->sin_addr), 4))) {							
+							
+							response_received = 1;
+							if (received_header->type == ICMP_ECHOREPLY) reached = 1;
 
-				++n_received;
+							unsigned long duration = (end.tv_sec - start.tv_sec) * 1000000000 + end.tv_nsec - start.tv_nsec;
+							duration /= 1000000; // To msec
 
-				if (memcmp(&received.sa_data, &(target->sa_data), received.sa_family == AF_INET ? 4 : 16)) reached = 1;
-					
+							char* buf = (char*) malloc(200);
+							inet_ntop(received.sin_family, &received.sin_addr.s_addr, buf, 200);
+							printf("%d ms %s\t", duration, buf);
+							fflush(stdout);
+							free(buf);
+
+							++n_received;
+
+						}
+
+					}
+				}
 			}
 		}
+
+		printf("\n");
 
 	}
 
@@ -191,21 +206,15 @@ int main(int argc, char* argv[]){
 
 	//printf("socket()\n");
 	fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP); 
-	printf("%d\n", fd);
+	//printf("%d\n", fd);
 	if (fd < 0){
 		printf("socket() error\n");
 		fflush(stdout);
-		char* b;
-		b = strerror(errno);
-		printf("%s\n", b) ;
+		printf("%s\n", strerror(errno)) ;
 		return 0;
 	}
 
-	printf("Strting process");
 	send_ping(fd, (struct sockaddr*) &a);
-
-	char* tmp = (char*)malloc(20);
-	fgets(tmp, 10, stdin);
 
 	return 0;
 }
