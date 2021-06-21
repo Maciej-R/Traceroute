@@ -13,10 +13,30 @@
 #include <signal.h>
 #include <time.h>
 #include <errno.h>
+#include <linux/in6.h>
+#include <asm/byteorder.h>
 
 // Automatic port number
 #define PORT_NO 0
 
+struct ipv6hdr {
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+        __u8                    priority:4, version:4;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+        __u8                        version:4,
+                                priority:4;
+#else
+#error        "Please fix <asm/byteorder.h>"
+#endif
+        __u8                        flow_lbl[3];
+
+        __be16                        payload_len;
+        __u8                        nexthdr;
+        __u8                        hop_limit;
+
+        struct        in6_addr        saddr;
+        struct        in6_addr        daddr;
+};
 
 // Calculating the Check Sum
 unsigned short checksum(void* b, int len)
@@ -192,7 +212,7 @@ void send_pingv6(int ping_sockfd, struct sockaddr_in6* target, int family, time_
 	else bzero(icmp_pkt, hdr_sz + payload_len);
 
 	struct icmphdr* icmp = (icmphdr*) &icmp_pkt;
-	icmp->type = ICMP_ECHO;
+	icmp->type = 128;
 	icmp->code = 0;
 
 	uint16_t seq_start;
@@ -254,15 +274,15 @@ void send_pingv6(int ping_sockfd, struct sockaddr_in6* target, int family, time_
 				clock_gettime(CLOCK_MONOTONIC, &end);
 				if (r_code > 0){
 
-					iphdr* received_ip_hdr = (iphdr*) rcv_icmp_pkt;
-					if (received_ip_hdr->protocol == IPPROTO_ICMP){
+					ipv6hdr* received_ip_hdr = (ipv6hdr*) rcv_icmp_pkt;
+					if (1){//received_ip_hdr == IPPROTO_ICMP){
 
-						icmphdr* received_header = (icmphdr*) (rcv_icmp_pkt + sizeof(iphdr));
+						icmphdr* received_header = (icmphdr*) (rcv_icmp_pkt);
 						sockaddr_in6* dst = (sockaddr_in6*) &target;
-						if (received_header->type == ICMP_TIME_EXCEEDED || (received_header->type == ICMP_ECHOREPLY && memcmp(&received.sin6_addr, &(dst->sin6_addr), 16))) {							
+						if (received_header->type == 3 || (received_header->type == 129 && memcmp(&received.sin6_addr, &(dst->sin6_addr), 16))) {							
 							
 							response_received = 1;
-							if (received_header->type == ICMP_ECHOREPLY) reached = 1;
+							if (received_header->type == 129) reached = 1;
 
 							unsigned long duration = (end.tv_sec - start.tv_sec) * 1000000000 + end.tv_nsec - start.tv_nsec;
 							duration /= 1000000; // To msec
@@ -316,7 +336,8 @@ int main(int argc, char* argv[]){
 	// 	return 0;
 	// }
 
-	char* test = "2a00:1450:401b:804::2004";
+	char* test = "fc00:1::31";
+	//char* test = "2a00:1450:401b:804::2004";
 	//char* test = "8.8.8.8";
 
 	if (inet_pton(AF_INET, test, &addr.sin_addr) > 0) {
