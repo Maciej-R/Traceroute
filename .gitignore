@@ -3,6 +3,7 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+<<<<<<< HEAD
 #bianries
 main
 tcptest
@@ -11,6 +12,14 @@ tcpt
 tcptest2
 
 .vscode
+=======
+#user defined
+.vscode/
+tcpt
+tcptest
+tcptest2
+main
+>>>>>>> master
 
 # User-specific files
 *.rsuser
