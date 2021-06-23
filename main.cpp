@@ -163,7 +163,7 @@ void send_ping(int ping_sockfd, struct sockaddr_in* target, int family, time_t t
 
 							char* buf = (char*) malloc(200);
 							inet_ntop(received.sin_family, &received.sin_addr.s_addr, buf, 200);
-							printf("%d ms %s\t", duration, buf);
+							printf("%lu ms %s\t", duration, buf);
 							fflush(stdout);
 							free(buf);
 
@@ -289,7 +289,7 @@ void send_pingv6(int ping_sockfd, struct sockaddr_in6* target, int family, time_
 
 							char* buf = (char*) malloc(200);
 							inet_ntop(received.sin6_family, &received.sin6_addr, buf, 200);
-							printf("%d ms %s\t", duration, buf);
+							printf("%lu ms %s\t", duration, buf);
 							fflush(stdout);
 							free(buf);
 
@@ -336,7 +336,7 @@ int main(int argc, char* argv[]){
 	// 	return 0;
 	// }
 
-	char* test = "fc00:1::31";
+	char* test = (char*)"2001:4860:4860::8888";
 	//char* test = "2a00:1450:401b:804::2004";
 	//char* test = "8.8.8.8";
 
