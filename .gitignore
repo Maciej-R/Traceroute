@@ -4,11 +4,13 @@
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 #user defined
-.vscode/
+*vscode
 tcpt
 tcptest
 tcptest2
 main
+test
+*.json
 
 # User-specific files
 *.rsuser
@@ -345,3 +347,4 @@ ASALocalRun/
 
 # BeatPulse healthcheck temp database
 healthchecksdb
+main
