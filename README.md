@@ -13,3 +13,8 @@ Program wypisuje trasy pakietów do hosta docelowego, wykorzystuje TTL z nagłó
 •    m – maksymalne TTL, domyślnie 64
 
 Program tcptraceroute udostępnia tą samą funkcjonalność, ale wykorzystuje pakiety TCP SYN zamiast ICMP ECHO_REQUEST
+
+### Instrukcja:
+
+``` g++ main.cpp -o tracert; sudo ./tracert <address>```
+```g++ tcpmain.cpp -o tcptracert; sudo ./tcptracert <address>```

@@ -33,7 +33,7 @@ struct ipv6hdr {
         struct        in6_addr        daddr;
 };
 
-void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, time_t t_out=3, char ttl_max=64, char n_tries=3){
+void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, time_t t_out=3, char ttl_max=64, char n_tries=3, unsigned long delay=1){
 
   struct timeval tv_out; // Receive time out for socket
 	tv_out.tv_sec = t_out;
@@ -62,8 +62,9 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, time_t t_out
   int rcv_icmp_pkt_sz = 128;
 	char* rcv_icmp_pkt = (char*) malloc(rcv_icmp_pkt_sz);
   char reached = 0;
-  struct timespec start, end;
-  unsigned long ping_delay = 1ul * 1000000000; // Time between consecutive packets sent in nanoseconds
+  struct timespec start, end, process_start, process_end;
+  unsigned long ping_delay = delay * 1000000000; // Time between consecutive packets sent in nanoseconds
+  int n_received = 0, n_sent = 0;
 
   for (int ttl = 1; ttl <= ttl_max && !reached; ++ttl) {
     printf("\n %d)\t", ttl);
@@ -72,6 +73,9 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, time_t t_out
       printf("Error while setting TTL \n");
       return;
     }
+
+    in_addr responding_address;
+		memset(&responding_address, 0, sizeof(in_addr));
     for (int i = 0; i < n_tries; ++i) {
       clock_gettime(CLOCK_MONOTONIC, &start);
 			unsigned long diff = (start.tv_sec - end.tv_sec) * 1000000000 + start.tv_nsec - end.tv_nsec;
@@ -83,6 +87,7 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, time_t t_out
       if (connect(sock_tcp, target, sizeof(*target)) == 0) {
         reached = 1;
       }
+      ++n_sent;
 
       char response_received = 0;
 			while (!response_received){
@@ -109,11 +114,19 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, time_t t_out
               unsigned long duration = (end.tv_sec - start.tv_sec) * 1000000000 + end.tv_nsec - start.tv_nsec;
 							duration /= 1000000; // To msec
 
-              char* buf = (char*) malloc(200);
-              inet_ntop(received.sin_family, &received.sin_addr.s_addr, buf, 200);
-              printf("%lu ms %s\t", duration, buf);
-              fflush(stdout);
-              free(buf);
+              if (memcmp(&responding_address, &received.sin_addr, sizeof(responding_address))) {
+								char* buf = (char*) malloc(200);
+								inet_ntop(received.sin_family, &received.sin_addr, buf, 200);
+								printf("%s\t%lu ms\t", buf, duration);
+								fflush(stdout);
+								free(buf);
+							} else {
+								printf("%lu ms\t", duration);
+								fflush(stdout);
+							}
+
+							++n_received;
+							responding_address = received.sin_addr;
               
             }
           }
@@ -121,9 +134,16 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, time_t t_out
       }
     }
   }
+
+  clock_gettime(CLOCK_MONOTONIC, &process_end);
+	float s = n_sent/n_received;
+	printf("Sent %d packets, received %d, success %.2f\n", n_sent, n_received, s);
+	unsigned long diff = (process_end.tv_sec - process_start.tv_sec) * 1000 + (process_end.tv_nsec - process_start.tv_nsec) / 1000000;
+	printf("Duration: %lu [msec]\n", diff);
+  
 }
 
-void tcp_ping6(int sock_tcp, int sock_icmp, struct sockaddr_in6* target, time_t t_out=3, char ttl_max=64, char n_tries=3){
+void tcp_ping6(int sock_tcp, int sock_icmp, struct sockaddr_in6* target, time_t t_out=3, char ttl_max=64, char n_tries=3, unsigned long delay=1){
 
   struct timeval tv_out; // Receive time out for socket
 	tv_out.tv_sec = t_out;
@@ -147,20 +167,23 @@ void tcp_ping6(int sock_tcp, int sock_icmp, struct sockaddr_in6* target, time_t 
   }
 
   struct sockaddr_in6 received;
-  socklen_t len = sizeof(received);
   int rcv_icmp_pkt_sz = 128;
 	char* rcv_icmp_pkt = (char*) malloc(rcv_icmp_pkt_sz);
   char reached = 0;
-  struct timespec start, end;
-  unsigned long ping_delay = 1ul * 1000000000; // Time between consecutive packets sent in nanoseconds
+  struct timespec start, end, process_start, process_end;
+  unsigned long ping_delay = delay * 1000000000; // Time between consecutive packets sent in nanoseconds
+  int n_received = 0, n_sent = 0;
 
   for (int ttl = 1; ttl <= ttl_max && !reached; ++ttl) {
     printf("\n %d)\t", ttl);
 
     if (setsockopt(sock_tcp, SOL_IPV6, IPV6_UNICAST_HOPS, &ttl, sizeof(ttl)) < 0) {
-      printf("Error while setting TTL \n");
+      perror("Error while setting TTL \n");
       return;
     }
+
+    in6_addr responding_address;
+    memset(&responding_address, 0, sizeof(in_addr));
     for (int i = 0; i < n_tries; ++i) {
       clock_gettime(CLOCK_MONOTONIC, &start);
 			unsigned long diff = (start.tv_sec - end.tv_sec) * 1000000000 + start.tv_nsec - end.tv_nsec;
@@ -172,7 +195,9 @@ void tcp_ping6(int sock_tcp, int sock_icmp, struct sockaddr_in6* target, time_t 
       if (connect(sock_tcp,  (struct sockaddr*) target, sizeof(*target)) == 0) {
         reached = 1;
       }
+      ++n_sent;
 
+      socklen_t len = sizeof(received);
       char response_received = 0;
 			while (!response_received){
         int r_code = recvfrom(sock_icmp, rcv_icmp_pkt, rcv_icmp_pkt_sz, 0, (struct sockaddr*) &received, &len);
@@ -185,32 +210,45 @@ void tcp_ping6(int sock_tcp, int sock_icmp, struct sockaddr_in6* target, time_t 
         if (r_code == 0) {printf("Packet empty"); }
         if (r_code > 0){
           ipv6hdr* received_ip_hdr = (ipv6hdr*) rcv_icmp_pkt;
-          if (true){
 
-            icmphdr* received_header = (icmphdr*) (rcv_icmp_pkt + sizeof(iphdr));
-            sockaddr_in6* dst = (sockaddr_in6*) &target;
-            // printf("header type %d", received_header->type );
-            if (received_header->type == 9) {							
-              response_received = 1;
-              if (&received.sin6_addr == &dst->sin6_addr){
-                reached = 1;
-              }
+          icmphdr* received_header = (icmphdr*) (rcv_icmp_pkt + sizeof(iphdr));
+          sockaddr_in6* dst = (sockaddr_in6*) &target;
+          // printf("header type %d", received_header->type );
+          if (received_header->type == 9) {							
+            response_received = 1;
+            if (&received.sin6_addr == &dst->sin6_addr){
+              reached = 1;
+            }
 
-              unsigned long duration = (end.tv_sec - start.tv_sec) * 1000000000 + end.tv_nsec - start.tv_nsec;
-							duration /= 1000000; // To msec
+            unsigned long duration = (end.tv_sec - start.tv_sec) * 1000000000 + end.tv_nsec - start.tv_nsec;
+            duration /= 1000000; // To msec
 
+            if (memcmp(&responding_address, &received.sin6_addr, sizeof(responding_address))) {
               char* buf = (char*) malloc(200);
               inet_ntop(received.sin6_family, &received.sin6_addr, buf, 200);
-              printf("%lu ms %s\t", duration, buf);
+              printf("%s\t%lu ms\t", buf, duration);
               fflush(stdout);
               free(buf);
-
+            } else {
+              printf("%lu ms\t", duration);
+              fflush(stdout);
             }
+
+            ++n_received;
+            responding_address = received.sin6_addr;
+
           }
         }
       }
     }
   }
+
+  clock_gettime(CLOCK_MONOTONIC, &process_end);
+	float s = n_sent/n_received;
+	printf("Sent %d packets, received %d, success %.2f\n", n_sent, n_received, s);
+	unsigned long diff = (process_end.tv_sec - process_start.tv_sec) * 1000 + (process_end.tv_nsec - process_start.tv_nsec) / 1000000;
+	printf("Duration: %lu [msec]\n", diff);
+
 }
 
 
@@ -239,11 +277,14 @@ int main(int argc, char* argv[]){
 			case 'n':
 				n_tries = atoi(optarg);
 				break;
-			case 'l':
-				payload_len = atoi(optarg);
-				break;
 			case 't':
 				t_out = atoi(optarg);
+				break;
+      case 'd':
+				delay = atoi(optarg);
+				break;
+      case 'm':
+				max_ttl = atoi(optarg);
 				break;
 			case ':':
 				printf("Option %c requires value\n", optopt);
@@ -315,8 +356,8 @@ int main(int argc, char* argv[]){
 		return -1;
 	}
 
-	if (v6 == 0) tcp_ping(sock1, sock2, (struct sockaddr*) &addr, t_out, max_ttl, n_tries);
-	else tcp_ping6(sock1, sock2, &addrv6, t_out, max_ttl, n_tries);
+	if (v6 == 0) tcp_ping(sock1, sock2, (struct sockaddr*) &addr, t_out, max_ttl, n_tries, delay);
+	else tcp_ping6(sock1, sock2, &addrv6, t_out, max_ttl, n_tries, delay);
 
 	return 0;
 }
