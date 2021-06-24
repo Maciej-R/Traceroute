@@ -163,11 +163,11 @@ void send_ping(int ping_sockfd, struct sockaddr_in* target, time_t t_out=3, char
 							if (memcmp(&responding_address, &received.sin_addr, sizeof(responding_address))) {
 								char* buf = (char*) malloc(200);
 								inet_ntop(received.sin_family, &received.sin_addr, buf, 200);
-								printf("%s\t%d ms\t", buf, duration);
+								printf("%s\t%lu ms\t", buf, duration);
 								fflush(stdout);
 								free(buf);
 							} else {
-								printf("%d ms\t", duration);
+								printf("%lu ms\t", duration);
 								fflush(stdout);
 							}
 
@@ -189,7 +189,7 @@ void send_ping(int ping_sockfd, struct sockaddr_in* target, time_t t_out=3, char
 	float s = n_sent/n_received;
 	printf("Sent %d packets, received %d, success %.2f\n", n_sent, n_received, s);
 	unsigned long diff = (process_end.tv_sec - process_start.tv_sec) * 1000 + (process_end.tv_nsec - process_start.tv_nsec) / 1000000;
-	printf("Duration: %d [msec]\n", diff);
+	printf("Duration: %lu [msec]\n", diff);
 
 }
 
@@ -297,11 +297,11 @@ void send_pingv6(int ping_sockfd, struct sockaddr_in6* target, time_t t_out=3, c
 							if (memcmp(&responding_address, &received.sin6_addr, sizeof(responding_address))) {
 								char* buf = (char*) malloc(200);
 								inet_ntop(received.sin6_family, &received.sin6_addr, buf, 200);
-								printf("%s\t%d ms\t", buf, duration);
+								printf("%s\t%lu ms\t", buf, duration);
 								fflush(stdout);
 								free(buf);
 							} else {
-								printf("%d ms\t", duration);
+								printf("%lu ms\t", duration);
 								fflush(stdout);
 							}
 
@@ -323,7 +323,7 @@ void send_pingv6(int ping_sockfd, struct sockaddr_in6* target, time_t t_out=3, c
 	float s = n_sent/n_received;
 	printf("Sent %d packets, received %d, success %.2f\n", n_sent, n_received, s);
 	unsigned long diff = (process_end.tv_sec - process_start.tv_sec) * 1000 + (process_end.tv_nsec - process_start.tv_nsec) / 1000000;
-	printf("Duration: %d [msec]\n", diff);
+	printf("Duration: %lu [msec]\n", diff);
 
 }
 
@@ -343,8 +343,10 @@ int main(int argc, char* argv[]){
 	time_t t_out = 2;
 	char max_ttl = 64;
 	unsigned long delay;
+	// address = (char*)"www.google.com";
 
 	// Parser program arguments
+
 	int c;
 	while((c = getopt(argc, argv, ":n:l:t:d:m:")) != -1) {
 		switch(c) {
@@ -387,8 +389,6 @@ int main(int argc, char* argv[]){
 	bzero(&addr, sizeof(addr));
 	bzero(&addrv6, sizeof(addrv6));
 	char v6 = 0;
-
-	address = "www.google.com";
 
 	if (inet_pton(AF_INET, address, &addr.sin_addr) > 0) {
 		addr.sin_family = AF_INET;

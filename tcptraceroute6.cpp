@@ -36,10 +36,12 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr_in6* target, char ttl
   struct timeval tv_out; // Receive time out for socket
 	tv_out.tv_sec = 3;
 	tv_out.tv_usec = 0;
-  int tm1 = setsockopt(sock_tcp, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_out, sizeof tv_out);
-  int tm2 = setsockopt(sock_icmp, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_out, sizeof tv_out);
-  if (tm1 < 0 || tm2 < 0){
-    printf("Error while setting receive timeout");
+  if (setsockopt(sock_tcp, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_out, sizeof tv_out) < 0){
+    perror("Error while setting TCP receive timeout");
+		return;
+  }
+  if (setsockopt(sock_icmp, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_out, sizeof tv_out) < 0){
+    printf("Error while setting ICMP receive timeout");
 		return;
   }
 
@@ -88,15 +90,19 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr_in6* target, char ttl
           break;
         }
         clock_gettime(CLOCK_MONOTONIC, &end);
+        if (r_code == 0) {printf("Packet empty"); }
         if (r_code > 0){
-
           ipv6hdr* received_ip_hdr = (ipv6hdr*) rcv_icmp_pkt;
           if (true){
 
             icmphdr* received_header = (icmphdr*) (rcv_icmp_pkt + sizeof(iphdr));
             sockaddr_in6* dst = (sockaddr_in6*) &target;
-            if (received_header->type == 3 || (received_header->type == 129 && memcmp(&received.sin6_addr, &(dst->sin6_addr), 16))) {							
+            // printf("header type %d", received_header->type );
+            if (received_header->type == 9) {							
               response_received = 1;
+              if (&received.sin6_addr == &dst->sin6_addr){
+                reached = 1;
+              }
 
               unsigned long duration = (end.tv_sec - start.tv_sec) * 1000000000 + end.tv_nsec - start.tv_nsec;
 							duration /= 1000000; // To msec

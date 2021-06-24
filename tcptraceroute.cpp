@@ -17,8 +17,14 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, char ttl_max
   struct timeval tv_out; // Receive time out for socket
 	tv_out.tv_sec = 3;
 	tv_out.tv_usec = 0;
-  setsockopt(sock_tcp, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_out, sizeof tv_out);
-  setsockopt(sock_icmp, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_out, sizeof tv_out);
+  if (setsockopt(sock_tcp, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_out, sizeof tv_out) < 0){
+    perror("Error while setting TCP receive timeout");
+		return;
+  }
+  if (setsockopt(sock_icmp, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_out, sizeof tv_out) < 0){
+    perror("Error while setting ICMP receive timeout");
+		return;
+  }
 
   struct sockaddr_in ad0;
 	bzero(&ad0, sizeof(ad0));
@@ -27,6 +33,7 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, char ttl_max
 	inet_pton(AF_INET, "0.0.0.0", &ad0.sin_addr);
   if (bind(sock_icmp, (struct sockaddr*) &ad0, sizeof(ad0)) < 0){
     perror("Failed to bind socket");
+    return;
   }
 
   struct sockaddr_in received;
@@ -74,6 +81,9 @@ void tcp_ping(int sock_tcp, int sock_icmp, struct sockaddr* target, char ttl_max
             sockaddr_in* dst = (sockaddr_in*) &target;
             if (received_header->type == ICMP_TIME_EXCEEDED || (received_header->type == ICMP_ECHOREPLY && memcmp(&received.sin_addr, &(dst->sin_addr), 4))) {							
               response_received = 1;
+              if (&received.sin_addr == &dst->sin_addr){
+                reached = 1;
+              }
 
               unsigned long duration = (end.tv_sec - start.tv_sec) * 1000000000 + end.tv_nsec - start.tv_nsec;
 							duration /= 1000000; // To msec
@@ -102,7 +112,7 @@ int main() {
 	}
   
   int sock2 = socket (PF_INET, SOCK_RAW, IPPROTO_ICMP);
-  if(sock1 < 0)
+  if(sock2 < 0)
 	{
 		//socket creation failed, may be because of non-root privileges
 		perror("Failed to create socket");
