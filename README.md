@@ -1,4 +1,4 @@
-#Traceroute
+# Traceroute
 Program wypisuje trasy pakietów do hosta docelowego, wykorzystuje TTL z nagłówka IP i bazuje na odpowiedziach ICMP TIME_EXCEEDED z węzłów sieciowych po drodze
 
 ### format wyjścia ``<#> <IP> <czas [ms]>``
